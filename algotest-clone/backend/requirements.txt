@@ -5,7 +5,8 @@ django-cors-headers
 dj-database-url
 psycopg[binary]
 python-dotenv
-
+psycopg[binary]>=3.2
+dj-database-url>=2.2
 requests
 pandas
 numpy
