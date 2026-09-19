@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Menu } from "lucide-react";
+import Link from "next/link";
+import { Landmark, Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -12,8 +13,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <main className="lg:pl-64">
       <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-white/90 px-4 backdrop-blur sm:px-6">
         <button onClick={()=>setOpen(true)} className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 lg:hidden" aria-label="Open menu"><Menu size={22}/></button>
-        <span className="hidden text-sm font-semibold lg:block">AlgoTest Clone</span>
-        <div className="ml-auto flex items-center gap-3"><span className="hidden text-sm text-gray-500 sm:block">Demo account</span><div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-950 text-xs font-bold text-white">RJ</div></div>
+        <span className="hidden text-sm font-semibold lg:block">AlgoTest Platform</span>
+        <div className="ml-auto flex items-center gap-3">
+          <Link
+            href="/dashboard/broker"
+            className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100/70"
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <Landmark size={14} className="text-emerald-700" />
+            <span className="font-mono">Dhan: 1113630741</span>
+          </Link>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-950 text-xs font-bold text-white">RJ</div>
+        </div>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-6">{children}</div>
     </main>

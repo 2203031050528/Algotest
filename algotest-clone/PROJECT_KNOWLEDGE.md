@@ -282,6 +282,23 @@ All endpoints are prefixed with `/api/`.
 | `GET` | `/api/backtests/{id}/trades/` | Get list of executed trades for the backtest | Yes |
 | `GET` | `/api/backtests/{id}/equity/` | Get step-by-step equity curve data points | Yes |
 
+### 6.4. Dhan Broker Integration (`/api/dhan/`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/dhan/status/` | Live connection status, active segments, data plan & funds summary | No |
+| `GET` | `/api/dhan/profile/` | Detailed user account profile from Dhan | No |
+| `GET` | `/api/dhan/funds/` | Live fund limits, SOD limit, collateral, and withdrawable balance | No |
+| `GET` | `/api/dhan/positions/` | Current open/closed trading positions from Dhan | No |
+| `GET` | `/api/dhan/orders/` | Orders placed today in the Dhan account | No |
+| `POST` | `/api/dhan/orders/` | Place a new order with DhanHQ engine | No |
+| `POST` | `/api/dhan/margin/` | Calculate live required margin for an order (`/v2/margincalculator`) | No |
+| `POST` | `/api/dhan/historical/` | Fetch historical/intraday charts from Dhan | No |
+
+### 6.5. Market Instruments (`/api/instruments/`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/instruments/` | List instruments mapped with Dhan security IDs & lot sizes (`?q=...`) | No |
+
 ---
 
 ## 7. Environment Variables & Setup

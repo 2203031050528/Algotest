@@ -49,4 +49,28 @@ urlpatterns = [
             "apps.backtesting.urls"
         ),
     ),
+
+    # Dhan Broker APIs
+    path(
+        "api/dhan/",
+        include(
+            "apps.dhan.urls"
+        ),
+    ),
+
+    # Instruments
+    path(
+        "api/instruments/",
+        include(
+            "apps.instruments.urls"
+        ),
+    ),
+
+    # Market Data (historical candles, sync, provider status)
+    path(
+        "api/market-data/",
+        include(
+            "apps.market_data.urls"
+        ),
+    ),
 ]
