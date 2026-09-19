@@ -52,7 +52,8 @@ export default function LoginPage() {
         error?.response?.data?.detail ||
         (error?.response
           ? "Invalid username or password."
-          : `Unable to connect to server (${error?.message || "network error"}). Please ensure backend is running at http://localhost:8000.`);
+          : `Unable to connect to server (${error?.message || "network error"}). Please ensure backend is reachable and CORS/API URL are configured.`);
+
 
       setError(message);
 

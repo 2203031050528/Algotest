@@ -85,9 +85,10 @@ export default function RegisterPage() {
 
         setError(
           error?.message
-            ? `Unable to connect to server (${error.message}). Please ensure the backend is running at http://localhost:8000.`
-            : "Unable to connect to server. Please ensure the backend is running at http://localhost:8000."
+            ? `Unable to connect to server (${error.message}). Please ensure the backend is reachable and CORS/API URL are configured.`
+            : "Unable to connect to server. Please ensure the backend is reachable and CORS/API URL are configured."
         );
+
 
       }
 

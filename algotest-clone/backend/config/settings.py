@@ -18,7 +18,10 @@ load_dotenv(BASE_DIR / ".env")
 # SECURITY
 # ============================================================
 
-SECRET_KEY = os.environ["SECRET_KEY"]
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-prod-algotest-default-key-change-in-render-env",
+)
 
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -26,10 +29,19 @@ ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv(
         "ALLOWED_HOSTS",
-        "localhost,127.0.0.1",
+        "localhost,127.0.0.1,.onrender.com",
     ).split(",")
     if host.strip()
 ]
+
+# Auto-add Render external hostname if provided by Render environment
+render_host = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if render_host and render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_host)
+
+if ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
+
 
 
 # ============================================================
@@ -124,16 +136,21 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set in .env")
+    # Safe fallback for builds / local run if DATABASE_URL not yet configured
+    DATABASE_URL = "sqlite:///" + str(BASE_DIR / "db.sqlite3")
+
+db_ssl_require = (
+    os.getenv("DB_SSL_REQUIRE", "False" if DEBUG or "sqlite" in DATABASE_URL else "True").lower()
+    == "true"
+)
 
 DATABASES = {
     "default": dj_database_url.config(
         default=DATABASE_URL,
         conn_max_age=600,
         conn_health_checks=True,
-        ssl_require=True,
+        ssl_require=db_ssl_require,
     )
 }
 
@@ -190,10 +207,13 @@ USE_TZ = True
 STATIC_URL = "/static/"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT.mkdir(parents=True, exist_ok=True)
 
 STATICFILES_STORAGE = (
     "whitenoise.storage.CompressedManifestStaticFilesStorage"
 )
+WHITENOISE_MANIFEST_STRICT = False
+
 
 
 # ============================================================
@@ -207,31 +227,61 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # CORS
 # ============================================================
 
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if cors_origins_env:
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in cors_origins_env.split(",")
+        if origin.strip()
+    ]
 else:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+
+# Automatically allow Vercel previews and production deployments
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
+
+if DEBUG or os.getenv("CORS_ALLOW_ALL_ORIGINS", "False").lower() == "true":
+    CORS_ALLOW_ALL_ORIGINS = True
 
 
 # ============================================================
 # CSRF
 # ============================================================
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+csrf_origins_env = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if csrf_origins_env:
+    CSRF_TRUSTED_ORIGINS = [
+        origin.strip()
+        for origin in csrf_origins_env.split(",")
+        if origin.strip()
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://*.vercel.app",
+        "https://*.onrender.com",
+    ]
+
 
 
 # ============================================================
