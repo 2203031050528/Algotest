@@ -30,12 +30,12 @@ import { marketApi } from "@/lib/market-api";
 import { Candle, MarketDataProvider, SyncCandlesResponse } from "@/types/market";
 
 const POPULAR_PRESETS = [
-  { symbol: "HDFCBANK", secId: "1333", segment: "NSE_EQ", type: "EQUITY" },
-  { symbol: "RELIANCE", secId: "2885", segment: "NSE_EQ", type: "EQUITY" },
-  { symbol: "TCS", secId: "11536", segment: "NSE_EQ", type: "EQUITY" },
-  { symbol: "INFY", secId: "1594", segment: "NSE_EQ", type: "EQUITY" },
-  { symbol: "NIFTY 50", secId: "13", segment: "IDX_I", type: "INDEX" },
-  { symbol: "BANKNIFTY", secId: "25", segment: "IDX_I", type: "INDEX" },
+  { symbol: "HDFCBANK", secId: "1333", segment: "NSE_EQ", type: "EQUITY", timeframe: "1d" as const },
+  { symbol: "RELIANCE", secId: "2885", segment: "NSE_EQ", type: "EQUITY", timeframe: "1d" as const },
+  { symbol: "TCS", secId: "11536", segment: "NSE_EQ", type: "EQUITY", timeframe: "1d" as const },
+  { symbol: "INFY", secId: "1594", segment: "NSE_EQ", type: "EQUITY", timeframe: "1d" as const },
+  { symbol: "NIFTY", secId: "13", segment: "IDX_I", type: "INDEX", timeframe: "5m" as const },
+  { symbol: "BANKNIFTY", secId: "25", segment: "IDX_I", type: "INDEX", timeframe: "1d" as const },
 ];
 
 export default function MarketDataPage() {
@@ -44,26 +44,33 @@ export default function MarketDataPage() {
   // Providers state
   const [providers, setProviders] = useState<MarketDataProvider[]>([]);
 
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+  const threeMonthsAgo = new Date(today);
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const threeMonthsAgoStr = threeMonthsAgo.toISOString().split("T")[0];
+
   // Sync state
   const [syncSymbol, setSyncSymbol] = useState("HDFCBANK");
   const [syncSecId, setSyncSecId] = useState("1333");
   const [syncSegment, setSyncSegment] = useState("NSE_EQ");
   const [syncType, setSyncType] = useState("EQUITY");
   const [syncTimeframe, setSyncTimeframe] = useState("1d");
-  const [syncStartDate, setSyncStartDate] = useState("2024-01-01");
-  const [syncEndDate, setSyncEndDate] = useState("2024-03-31");
+  const [syncStartDate, setSyncStartDate] = useState(threeMonthsAgoStr);
+  const [syncEndDate, setSyncEndDate] = useState(todayStr);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<SyncCandlesResponse | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Explorer state
+  const [expSelectedProvider, setExpSelectedProvider] = useState<"dhan" | "csv">("dhan");
   const [expSymbol, setExpSymbol] = useState("HDFCBANK");
   const [expSecId, setExpSecId] = useState("1333");
   const [expSegment, setExpSegment] = useState("NSE_EQ");
   const [expType, setExpType] = useState("EQUITY");
   const [expTimeframe, setExpTimeframe] = useState<"1m" | "5m" | "15m" | "25m" | "1h" | "1d">("1d");
-  const [expStartDate, setExpStartDate] = useState("2024-01-01");
-  const [expEndDate, setExpEndDate] = useState("2024-03-31");
+  const [expStartDate, setExpStartDate] = useState(threeMonthsAgoStr);
+  const [expEndDate, setExpEndDate] = useState(todayStr);
   const [expLoading, setExpLoading] = useState(false);
   const [expCandles, setExpCandles] = useState<Candle[]>([]);
   const [expCount, setExpCount] = useState<number>(0);
@@ -71,8 +78,8 @@ export default function MarketDataPage() {
   const [expError, setExpError] = useState<string | null>(null);
 
   // Cache inspector state
-  const [cacheSecId, setCacheSecId] = useState("1333");
-  const [cacheTimeframe, setCacheTimeframe] = useState("1d");
+  const [cacheSecId, setCacheSecId] = useState("");
+  const [cacheTimeframe, setCacheTimeframe] = useState("");
   const [cacheCandles, setCacheCandles] = useState<Candle[]>([]);
   const [cacheTotal, setCacheTotal] = useState(0);
   const [cacheLoading, setCacheLoading] = useState(false);
@@ -86,6 +93,12 @@ export default function MarketDataPage() {
       })
       .catch((err) => console.error("Error fetching providers:", err));
 
+    // Auto-load HDFCBANK daily data for the last 3 months
+    const toDate = new Date().toISOString().split("T")[0];
+    const fromDate = new Date();
+    fromDate.setMonth(fromDate.getMonth() - 3);
+    const fromDateStr = fromDate.toISOString().split("T")[0];
+
     marketApi
       .getHistorical({
         security_id: "1333",
@@ -93,8 +106,9 @@ export default function MarketDataPage() {
         exchange_segment: "NSE_EQ",
         instrument_type: "EQUITY",
         timeframe: "1d",
-        start_date: "2024-01-01",
-        end_date: "2024-03-31",
+        start_date: fromDateStr,
+        end_date: toDate,
+        provider: "dhan",
         page_size: 500,
       })
       .then((res) => {
@@ -103,8 +117,16 @@ export default function MarketDataPage() {
         setExpCount(res.count || 0);
         setExpProvider(res.provider || "dhan");
       })
-      .catch(() => {
-        // Handled silently on initial load
+      .catch((err) => {
+        if (!active) return;
+        const msg =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          "";
+        if (msg) {
+          setExpError(msg);
+        }
       });
 
     return () => {
@@ -112,17 +134,18 @@ export default function MarketDataPage() {
     };
   }, []);
 
-
   const handleApplyPreset = (preset: typeof POPULAR_PRESETS[0]) => {
     setSyncSymbol(preset.symbol);
     setSyncSecId(preset.secId);
     setSyncSegment(preset.segment);
     setSyncType(preset.type);
+    setSyncTimeframe(preset.timeframe);
 
     setExpSymbol(preset.symbol);
     setExpSecId(preset.secId);
     setExpSegment(preset.segment);
     setExpType(preset.type);
+    setExpTimeframe(preset.timeframe);
     setCacheSecId(preset.secId);
   };
 
@@ -156,9 +179,10 @@ export default function MarketDataPage() {
     }
   };
 
-  const fetchExplorerData = async () => {
+  const fetchExplorerData = async (overrideProvider?: "dhan" | "csv") => {
     setExpLoading(true);
     setExpError(null);
+    const prov = overrideProvider || expSelectedProvider;
     try {
       const res = await marketApi.getHistorical({
         security_id: expSecId,
@@ -168,11 +192,15 @@ export default function MarketDataPage() {
         timeframe: expTimeframe,
         start_date: expStartDate,
         end_date: expEndDate,
+        provider: prov,
         page_size: 500,
       });
       setExpCandles(res.results || []);
       setExpCount(res.count || 0);
-      setExpProvider(res.provider || "dhan");
+      setExpProvider(res.provider || prov);
+      if ((res.results || []).length === 0) {
+        setExpError(`No candles found for ${expSymbol} (${expTimeframe}) between ${expStartDate} and ${expEndDate}.`);
+      }
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string; detail?: string } }; message?: string };
       setExpError(
@@ -187,16 +215,17 @@ export default function MarketDataPage() {
     }
   };
 
-  const fetchCacheData = async () => {
+  const fetchCacheData = async (secIdOverride?: string) => {
     setCacheLoading(true);
     try {
+      const targetSecId = secIdOverride !== undefined ? secIdOverride : cacheSecId;
       const res = await marketApi.getCandles({
-        security_id: cacheSecId,
-        timeframe: cacheTimeframe,
-        limit: 100,
+        security_id: targetSecId ? targetSecId : undefined,
+        timeframe: cacheTimeframe ? cacheTimeframe : undefined,
+        limit: 200,
       });
       setCacheCandles(res.results || []);
-      setCacheTotal(res.count || 0);
+      setCacheTotal((res as { total_count?: number }).total_count ?? res.count ?? 0);
     } catch (err) {
       console.error("Failed to query candle cache:", err);
     } finally {
@@ -330,7 +359,19 @@ export default function MarketDataPage() {
           <div className="space-y-6">
             {/* Filter controls */}
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Feed Provider</label>
+                  <select
+                    value={expSelectedProvider}
+                    onChange={(e) => setExpSelectedProvider(e.target.value as "dhan" | "csv")}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white font-medium focus:border-gray-900 focus:outline-none"
+                  >
+                    <option value="dhan">DhanHQ (Live API)</option>
+                    <option value="csv">Local CSV (Offline)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Symbol</label>
                   <input
@@ -389,7 +430,7 @@ export default function MarketDataPage() {
 
                 <div className="flex items-end">
                   <button
-                    onClick={fetchExplorerData}
+                    onClick={() => fetchExplorerData()}
                     disabled={expLoading}
                     className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50 transition"
                   >
@@ -402,21 +443,62 @@ export default function MarketDataPage() {
 
             {/* Error banner */}
             {expError && (
-              <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={16} className="text-amber-600 shrink-0" />
-                  <span>{expError}</span>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-5 text-xs text-amber-950 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-sm text-amber-900">
+                        {expError.includes("451") || expError.toLowerCase().includes("subscribe to data apis")
+                          ? "DhanHQ Historical Data API: Subscription Required (HTTP 451)"
+                          : "Market Data Notice"}
+                      </p>
+                      <p className="mt-1 text-amber-800 leading-relaxed max-w-2xl">
+                        {expError.includes("451") || expError.toLowerCase().includes("subscribe to data apis")
+                          ? "Your Dhan client credentials are valid and live trading is active. However, historical candlestick data requires activating the free 'Data APIs' subscription in your Dhan Web console. In the meantime, you can seamlessly load the Local CSV Feed or inspect existing DB candles."
+                          : expError}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {expSelectedProvider === "dhan" && (
+                      <button
+                        onClick={() => {
+                          setExpSelectedProvider("csv");
+                          setExpSymbol("NIFTY");
+                          setExpSecId("13");
+                          setExpTimeframe("5m");
+                          setExpStartDate("2026-01-01");
+                          setExpEndDate("2026-01-10");
+                          fetchExplorerData("csv");
+                        }}
+                        className="rounded-xl bg-emerald-600 px-3.5 py-2 font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
+                      >
+                        Load Local CSV Feed (NIFTY)
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setActiveTab("cache");
+                        fetchCacheData("");
+                      }}
+                      className="rounded-xl border border-amber-300 bg-white px-3.5 py-2 font-semibold text-amber-900 hover:bg-amber-100 transition"
+                    >
+                      Inspect DB Cache
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab("sync");
+                        setSyncSecId(expSecId);
+                        setSyncSymbol(expSymbol);
+                      }}
+                      className="rounded-xl bg-amber-200 px-3.5 py-2 font-semibold text-amber-900 hover:bg-amber-300 transition"
+                    >
+                      Dhan Sync
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveTab("sync");
-                    setSyncSecId(expSecId);
-                    setSyncSymbol(expSymbol);
-                  }}
-                  className="rounded-lg bg-amber-200 px-3 py-1 font-semibold hover:bg-amber-300"
-                >
-                  Sync from Dhan Now
-                </button>
               </div>
             )}
 
@@ -785,15 +867,15 @@ export default function MarketDataPage() {
           <div className="space-y-6">
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end justify-between">
-                <div className="grid gap-4 sm:grid-cols-3 flex-1 max-w-2xl">
+                <div className="grid gap-4 sm:grid-cols-4 flex-1 max-w-3xl">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Security ID
+                      Security ID or Symbol
                     </label>
                     <input
                       value={cacheSecId}
                       onChange={(e) => setCacheSecId(e.target.value)}
-                      placeholder="e.g. 1333"
+                      placeholder="All or e.g. NIFTY / 13"
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
                     />
                   </div>
@@ -807,6 +889,7 @@ export default function MarketDataPage() {
                       onChange={(e) => setCacheTimeframe(e.target.value)}
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white focus:border-gray-900 focus:outline-none"
                     >
+                      <option value="">All Timeframes</option>
                       <option value="1d">1d (Daily)</option>
                       <option value="1m">1m</option>
                       <option value="5m">5m</option>
@@ -817,18 +900,32 @@ export default function MarketDataPage() {
 
                   <div className="flex items-end">
                     <button
-                      onClick={fetchCacheData}
+                      onClick={() => fetchCacheData()}
                       disabled={cacheLoading}
                       className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50 transition"
                     >
                       {cacheLoading ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
-                      Inspect Database
+                      Filter Cache
+                    </button>
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setCacheSecId("");
+                        setCacheTimeframe("");
+                        fetchCacheData("");
+                      }}
+                      disabled={cacheLoading}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition"
+                    >
+                      View All Candles
                     </button>
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-gray-50 px-4 py-2.5 text-xs text-gray-600 border border-gray-200">
-                  Found <b className="text-gray-900 font-bold">{cacheTotal}</b> cached candles in PostgreSQL
+                <div className="rounded-xl bg-gray-50 px-4 py-2.5 text-xs text-gray-600 border border-gray-200 shrink-0">
+                  Total in Postgres: <b className="text-gray-900 font-bold">{cacheTotal}</b> candles
                 </div>
               </div>
             </div>
@@ -838,7 +935,8 @@ export default function MarketDataPage() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50 uppercase text-gray-400 font-semibold border-b">
                     <tr>
-                      <th className="px-5 py-3">Security ID</th>
+                      <th className="px-5 py-3">Symbol / Sec ID</th>
+                      <th className="px-5 py-3">Timeframe</th>
                       <th className="px-5 py-3">Timestamp</th>
                       <th className="px-5 py-3">Open</th>
                       <th className="px-5 py-3">High</th>
@@ -850,7 +948,12 @@ export default function MarketDataPage() {
                   <tbody className="divide-y divide-gray-100 font-mono">
                     {cacheCandles.map((c, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/75 transition">
-                        <td className="px-5 py-2.5 font-semibold text-blue-600">#{cacheSecId}</td>
+                        <td className="px-5 py-2.5 font-semibold text-blue-600">
+                          {c.symbol || `#${c.security_id}`}
+                        </td>
+                        <td className="px-5 py-2.5 text-gray-600 font-semibold uppercase">
+                          {c.timeframe}
+                        </td>
                         <td className="px-5 py-2.5 font-medium text-gray-800">
                           {c.timestamp ? c.timestamp.replace("T", " ").replace("Z", "") : "—"}
                         </td>
@@ -865,9 +968,9 @@ export default function MarketDataPage() {
                     ))}
                     {cacheCandles.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-5 py-8 text-center text-gray-400 font-sans">
-                          No cached candles found in database for Security #{cacheSecId} ({cacheTimeframe}).
-                          Try syncing from Dhan in the &ldquo;Dhan Candle Synchronizer&rdquo; tab.
+                        <td colSpan={8} className="px-5 py-8 text-center text-gray-400 font-sans">
+                          No cached candles found in database matching the filter.
+                          Click &ldquo;View All Candles&rdquo; or sync from Dhan / CSV.
                         </td>
                       </tr>
                     )}
@@ -887,85 +990,104 @@ export default function MarketDataPage() {
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white">
-                      <Landmark size={20} />
+              {/* DhanHQ Provider */}
+              {(() => {
+                const dhanProv = providers.find((p) => p.name === "dhan");
+                return (
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                          <Landmark size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900">DhanHQ Provider</h3>
+                          <p className="text-xs text-gray-500">Primary Market Data Feed (DhanHQ v2)</p>
+                        </div>
+                      </div>
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        {dhanProv?.status ? dhanProv.status.toUpperCase() : "ACTIVE"}
+                      </span>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900">DhanHQ Provider</h3>
-                      <p className="text-xs text-gray-500">Primary Market Data Feed</p>
+
+                    <div className="mt-5 space-y-3 text-xs text-gray-600">
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Rate Limit</span>
+                        <span className="font-semibold text-gray-900">{dhanProv?.rate_limit || "5 req / sec"}</span>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Supported Segments</span>
+                        <span className="font-semibold text-gray-900">
+                          {dhanProv?.supported_segments?.join(", ") || "NSE_EQ, NSE_FNO, IDX_I, BSE_EQ"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Granularity</span>
+                        <span className="font-semibold text-gray-900">
+                          {dhanProv?.timeframes?.join(", ") || "1m, 5m, 15m, 25m, 1h, 1d"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-gray-500">Priority</span>
+                        <span className="font-semibold text-gray-900">
+                          Priority {dhanProv?.priority || 1} (Primary Live)
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    {providers.find((p) => p.name === "dhan")?.status || "Active"}
-                  </span>
-                </div>
+                );
+              })()}
 
+              {/* CSV Provider */}
+              {(() => {
+                const csvProv = providers.find((p) => p.name === "csv");
+                return (
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white">
+                          <FileSpreadsheet size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900">CSV &amp; Local Storage Provider</h3>
+                          <p className="text-xs text-gray-500">Offline &amp; Historical Fallback</p>
+                        </div>
+                      </div>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
+                        {csvProv?.status ? csvProv.status.toUpperCase() : "ACTIVE"}
+                      </span>
+                    </div>
 
-              <div className="mt-5 space-y-3 text-xs text-gray-600">
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Rate Limit</span>
-                  <span className="font-semibold text-gray-900">5 req / sec</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Supported Segments</span>
-                  <span className="font-semibold text-gray-900">NSE_EQ, NSE_FNO, IDX_I, BSE_EQ</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Granularity</span>
-                  <span className="font-semibold text-gray-900">1m, 5m, 15m, 25m, 1h, 1d</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-gray-500">Priority</span>
-                  <span className="font-semibold text-gray-900">Priority 1 (Primary)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white">
-                    <FileSpreadsheet size={20} />
+                    <div className="mt-5 space-y-3 text-xs text-gray-600">
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Storage Engine</span>
+                        <span className="font-semibold text-gray-900">PostgreSQL + Local CSV directory</span>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Detected Files</span>
+                        <span className="font-semibold text-emerald-600">
+                          {csvProv?.file_count ?? 1} file(s) available ({csvProv?.csv_files?.join(", ") || "nifty_5m.csv"})
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-1.5 border-b border-gray-100">
+                        <span className="text-gray-500">Rate Limit</span>
+                        <span className="font-semibold text-gray-900">{csvProv?.rate_limit || "Unlimited (Disk I/O)"}</span>
+                      </div>
+                      <div className="flex justify-between py-1.5">
+                        <span className="text-gray-500">Priority</span>
+                        <span className="font-semibold text-gray-900">
+                          Priority {csvProv?.priority || 2} (Offline Fallback)
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">CSV &amp; Local Storage Provider</h3>
-                    <p className="text-xs text-gray-500">Offline &amp; Historical Fallback</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
-                  Standby
-                </span>
-              </div>
-
-              <div className="mt-5 space-y-3 text-xs text-gray-600">
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Storage Engine</span>
-                  <span className="font-semibold text-gray-900">PostgreSQL + Local CSV directory</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Access Latency</span>
-                  <span className="font-semibold text-emerald-600">&lt; 10ms (Index optimized)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-gray-100">
-                  <span className="text-gray-500">Supported Formats</span>
-                  <span className="font-semibold text-gray-900">CSV, Parquet, JSON</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-gray-500">Priority</span>
-                  <span className="font-semibold text-gray-900">Priority 2 (Fallback)</span>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
   </AppShell>
-
-
   );
 }

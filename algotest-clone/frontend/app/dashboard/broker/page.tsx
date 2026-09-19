@@ -161,7 +161,7 @@ export default function BrokerPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900">
-                  Dhan Account: {status?.client_id || "1113630741"}
+                  Dhan Account{status?.client_id ? `: ${status.client_id}` : ""}
                 </h3>
                 <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
                   <span className="flex items-center gap-1">
@@ -314,40 +314,43 @@ export default function BrokerPage() {
                 Credentials verified and loaded from backend environment.
               </p>
               <dl className="mt-5 divide-y divide-gray-100 text-sm">
-                <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">Dhan Client ID</dt>
-                  <dd className="font-mono font-semibold text-gray-900">
-                    {status?.client_id || "1113630741"}
-                  </dd>
-                </div>
+                {status?.client_id && (
+                  <div className="flex justify-between py-3">
+                    <dt className="text-gray-500">Dhan Client ID</dt>
+                    <dd className="font-mono font-semibold text-gray-900">{status.client_id}</dd>
+                  </div>
+                )}
                 <div className="flex justify-between py-3">
                   <dt className="text-gray-500">Access Token (JWT)</dt>
                   <dd className="flex items-center gap-1.5 font-medium text-emerald-600">
-                    <CheckCircle2 size={15} /> Active
+                    <CheckCircle2 size={15} />
+                    {isConnected ? "Active" : "Not Configured"}
                   </dd>
                 </div>
                 <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">API Key</dt>
-                  <dd className="font-mono text-gray-700">65b4b5e9 (Configured)</dd>
-                </div>
-                <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">API Secret</dt>
-                  <dd className="font-mono text-gray-700">•••••••••••••••• (Configured)</dd>
-                </div>
-                <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">Active Segment</dt>
-                  <dd className="font-semibold text-gray-900">
-                    {profile?.activeSegment || "Equity"}
+                  <dt className="text-gray-500">API Credentials</dt>
+                  <dd className="font-mono text-gray-700">
+                    {isConnected ? "•••••••• (Secured in backend .env)" : "Not Configured"}
                   </dd>
                 </div>
-                <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">DDPI Status</dt>
-                  <dd className="text-gray-700">{profile?.ddpi || "Deactive"}</dd>
-                </div>
-                <div className="flex justify-between py-3">
-                  <dt className="text-gray-500">MTF Status</dt>
-                  <dd className="text-gray-700">{profile?.mtf || "Deactive"}</dd>
-                </div>
+                {profile?.activeSegment && (
+                  <div className="flex justify-between py-3">
+                    <dt className="text-gray-500">Active Segment</dt>
+                    <dd className="font-semibold text-gray-900">{profile.activeSegment}</dd>
+                  </div>
+                )}
+                {profile?.ddpi && (
+                  <div className="flex justify-between py-3">
+                    <dt className="text-gray-500">DDPI Status</dt>
+                    <dd className="text-gray-700">{profile.ddpi}</dd>
+                  </div>
+                )}
+                {profile?.mtf && (
+                  <div className="flex justify-between py-3">
+                    <dt className="text-gray-500">MTF Status</dt>
+                    <dd className="text-gray-700">{profile.mtf}</dd>
+                  </div>
+                )}
               </dl>
             </div>
 

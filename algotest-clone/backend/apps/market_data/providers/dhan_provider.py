@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from django.db import models
 from apps.dhan.client import DhanClient
 from apps.dhan.exceptions import DhanBaseException
 from apps.dhan.services.historical_data import DhanHistoricalService
@@ -72,10 +73,11 @@ class DhanProvider(MarketDataProvider):
         )
 
         # 1. Attempt to serve from cache
-        cached = self._get_cached_candles(security_id, timeframe, start_date, end_date)
+        cached = self._get_cached_candles(security_id, timeframe, start_date, end_date, symbol=symbol)
         missing_ranges = self._find_missing_ranges(cached, start_date, end_date, timeframe)
 
         # 2. Back-fill missing ranges from Dhan API
+        last_error = None
         if missing_ranges:
             logger.info(
                 "[DhanProvider] %d missing range(s) detected for %s, fetching from Dhan API",
@@ -94,6 +96,7 @@ class DhanProvider(MarketDataProvider):
                         instrument_type=instrument_type,
                     )
                 except DhanBaseException as exc:
+                    last_error = exc
                     logger.warning(
                         "[DhanProvider] Gap fill failed for %s %s→%s: %s",
                         symbol,
@@ -103,7 +106,12 @@ class DhanProvider(MarketDataProvider):
                     )
 
         # 3. Re-query DB and return full range
-        all_candles = self._get_cached_candles(security_id, timeframe, start_date, end_date)
+        all_candles = self._get_cached_candles(security_id, timeframe, start_date, end_date, symbol=symbol)
+
+        # If cache has no candles and upstream Dhan API failed, propagate the exception
+        if not all_candles and last_error is not None:
+            raise last_error
+
         return all_candles
 
     def is_available(self) -> bool:
@@ -116,11 +124,18 @@ class DhanProvider(MarketDataProvider):
             return False
 
     def describe(self) -> Dict[str, Any]:
+        available = self.is_available()
         return {
+            "name": "dhan",
             "provider": self.get_provider_name(),
-            "available": self.is_available(),
+            "available": available,
+            "status": "active" if available else "inactive",
             "source": "DhanHQ v2 API",
             "cache": "PostgreSQL Candle table",
+            "rate_limit": "5 req / sec",
+            "supported_segments": ["NSE_EQ", "NSE_FNO", "IDX_I", "BSE_EQ"],
+            "timeframes": ["1m", "5m", "15m", "25m", "1h", "1d"],
+            "priority": 1,
         }
 
     # ------------------------------------------------------------------
@@ -131,19 +146,30 @@ class DhanProvider(MarketDataProvider):
         self,
         security_id: str,
         timeframe: str,
-        start_date: date,
-        end_date: date,
+        start_date: Any,
+        end_date: Any,
+        symbol: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Query the Candle table for the specified instrument + timeframe + date window.
+        Matches by security_id OR symbol for maximum resilience.
         Returns list of candle dicts sorted by timestamp.
         """
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+
         start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=MARKET_TZ)
         end_dt = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59, tzinfo=MARKET_TZ)
 
+        query = models.Q(security_id=str(security_id))
+        if symbol:
+            query = query | models.Q(symbol__iexact=str(symbol))
+
         qs = (
             Candle.objects.filter(
-                security_id=security_id,
+                query,
                 timeframe=timeframe,
                 timestamp__gte=start_dt,
                 timestamp__lte=end_dt,

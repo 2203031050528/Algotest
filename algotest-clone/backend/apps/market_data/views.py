@@ -9,6 +9,7 @@ Endpoints:
 
 import logging
 
+from django.db import models
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -84,13 +85,17 @@ class HistoricalDataView(APIView):
                 str(exc),
             )
             return Response(
-                {"error": str(exc), "code": getattr(exc, "code", "DHAN_ERROR")},
+                {
+                    "error": str(exc),
+                    "code": getattr(exc, "code", "DHAN_ERROR"),
+                    "provider": provider_name,
+                },
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         except Exception as exc:
             logger.exception("[HistoricalDataView] Unexpected error: %s", str(exc))
             return Response(
-                {"error": "Internal server error while fetching market data."},
+                {"error": f"Error fetching market data: {str(exc)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -206,8 +211,9 @@ class CandleListView(APIView):
     Useful for verifying cached data without triggering Dhan API calls.
 
     Query Parameters:
-        security_id (required)
-        timeframe   (required)
+        security_id (optional)
+        symbol      (optional)
+        timeframe   (optional)
         start_date  (YYYY-MM-DD, optional)
         end_date    (YYYY-MM-DD, optional)
         limit       (int, default: 200, max: 2000)
@@ -219,31 +225,38 @@ class CandleListView(APIView):
 
     def get(self, request):
         security_id = request.query_params.get("security_id")
+        symbol = request.query_params.get("symbol")
         timeframe = request.query_params.get("timeframe")
         start_date = request.query_params.get("start_date")
         end_date = request.query_params.get("end_date")
         limit = min(int(request.query_params.get("limit", 200)), self.MAX_LIMIT)
 
-        if not security_id or not timeframe:
-            return Response(
-                {"error": "security_id and timeframe are required query parameters."},
-                status=status.HTTP_400_BAD_REQUEST,
+        qs = Candle.objects.all().order_by("-timestamp")
+
+        if security_id and symbol:
+            qs = qs.filter(
+                models.Q(security_id=security_id) | models.Q(symbol__iexact=symbol)
             )
+        elif security_id:
+            qs = qs.filter(
+                models.Q(security_id=security_id) | models.Q(symbol__iexact=security_id)
+            )
+        elif symbol:
+            qs = qs.filter(symbol__iexact=symbol)
 
-        qs = Candle.objects.filter(
-            security_id=security_id,
-            timeframe=timeframe,
-        ).order_by("timestamp")
-
+        if timeframe:
+            qs = qs.filter(timeframe=timeframe)
         if start_date:
             qs = qs.filter(timestamp__date__gte=start_date)
         if end_date:
             qs = qs.filter(timestamp__date__lte=end_date)
 
-        qs = qs[:limit]
-        serializer = CandleSerializer(qs, many=True)
+        total_matching = qs.count()
+        results = qs[:limit]
+        serializer = CandleSerializer(results, many=True)
         return Response({
-            "count": len(serializer.data),
+            "total_count": Candle.objects.count(),
+            "count": total_matching,
             "limit": limit,
             "results": serializer.data,
         })

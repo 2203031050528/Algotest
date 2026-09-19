@@ -1,16 +1,17 @@
 # AlgoTest Clone — Project Knowledge Base
 
-Comprehensive architecture, codebase map, data models, business logic, API references, and operational workflows for the **AlgoTest Clone** project.
+Comprehensive architecture, codebase map, data models, business logic, API references, provider architecture, and operational workflows for the **AlgoTest Clone** project.
 
 ---
 
 ## 1. Project Overview
 
-**AlgoTest Clone** is a full-stack algorithmic trading and backtesting web platform modeled after AlgoTest.in. It enables retail traders and quant researchers to:
+**AlgoTest Clone** is a full-stack algorithmic trading, market-data synchronization, and backtesting web platform modeled after AlgoTest.in. It enables retail traders and quant researchers to:
 - Formulate rule-based algorithmic trading strategies with custom technical indicators (RSI, EMA, etc.) and risk management rules (Stop Loss, Profit Target).
 - Run historical backtests against Indian equity/derivatives market data (NIFTY, BANKNIFTY, FINNIFTY, Equities) with granular trade logging and equity curve tracking.
 - Inspect detailed analytics including Win Rate, Total P&L, Max Drawdown, and per-trade execution breakdown.
-- Prepare strategies for live execution / paper trading through Indian broker APIs (Dhan API integration stubbed).
+- Synchronize live and historical OHLCV market feeds from the **DhanHQ v2 REST API** into PostgreSQL with a pluggable provider architecture (DhanHQ primary, local CSV/disk fallback).
+- Inspect live broker status, fund limits, margins, open positions, and orders directly integrated with Indian broker accounts (Dhan API).
 
 ---
 
@@ -23,8 +24,9 @@ Comprehensive architecture, codebase map, data models, business logic, API refer
 | **Django** | >= 5.2, < 6.0 | Web framework & ORM |
 | **Django REST Framework (DRF)** | >= 3.16 | RESTful API serialization & viewsets |
 | **SimpleJWT** | `djangorestframework-simplejwt` | Stateless JWT authentication (access & refresh tokens) |
-| **PostgreSQL / dj-database-url** | psycopg 3.2+ | Production-grade relational database with connection pooling |
+| **PostgreSQL / NeonDB** | psycopg 3.2+ | Production-grade relational database with connection pooling |
 | **Pandas & NumPy** | Current | Vectorized indicator calculations and backtesting loop |
+| **Requests** | Current | Production-grade HTTP client with exponential backoff & retry |
 | **WhiteNoise** | Current | Static file serving for deployment |
 | **Gunicorn** | Current | WSGI production application server |
 
@@ -36,7 +38,7 @@ Comprehensive architecture, codebase map, data models, business logic, API refer
 | **TypeScript** | 5.0+ | Static type safety |
 | **Tailwind CSS** | v4.0 with PostCSS | Design system & utility styling |
 | **Lucide React** | ^0.468.0 | Icon set |
-| **Recharts** | ^2.15.0 | Interactive financial charts (Equity curves) |
+| **Recharts** | ^2.15.0 | Interactive financial charts (Area charts for Equity Curves & Price Series) |
 | **Axios** | ^1.7.0 | HTTP client with JWT interceptor |
 | **TanStack React Query** | ^5.0.0 | Server state management and caching |
 
@@ -48,86 +50,112 @@ Comprehensive architecture, codebase map, data models, business logic, API refer
 algotest-clone/
 ├── backend/
 │   ├── apps/
-│   │   ├── users/                 # Authentication & User accounts
-│   │   │   ├── apps.py            # AppConfig (apps.users)
-│   │   │   ├── serializers.py     # RegisterSerializer with validation
-│   │   │   ├── views.py           # RegisterView (generics.CreateAPIView)
-│   │   │   └── urls.py            # Auth routes (/register/)
-│   │   ├── strategies/            # Strategy definitions
-│   │   │   ├── apps.py            # AppConfig (apps.strategies)
-│   │   │   ├── models.py          # Strategy model (symbol, timeframe, rules JSON)
-│   │   │   ├── serializers.py     # StrategySerializer
-│   │   │   ├── views.py           # StrategyViewSet (ModelViewSet)
-│   │   │   └── urls.py            # DRF router for /api/strategies/
-│   │   ├── backtesting/           # Historical backtesting engine & results
-│   │   │   ├── apps.py            # AppConfig (apps.backtesting)
-│   │   │   ├── models.py          # Backtest & BacktestTrade models
-│   │   │   ├── serializers.py     # BacktestSerializer, BacktestTradeSerializer
-│   │   │   ├── views.py           # BacktestViewSet (create runs backtest synchronously)
-│   │   │   ├── urls.py            # DRF router for /api/backtests/
-│   │   │   ├── tasks.py           # Celery async task skeleton (optional)
-│   │   │   └── services/          # Core Backtest Engine Modules
+│   │   ├── users/                     # Authentication & User accounts
+│   │   │   ├── apps.py                # AppConfig (apps.users)
+│   │   │   ├── serializers.py         # RegisterSerializer with password validation
+│   │   │   ├── views.py               # RegisterView (generics.CreateAPIView)
+│   │   │   └── urls.py                # Auth routes (/register/)
+│   │   ├── strategies/                # Strategy definitions
+│   │   │   ├── apps.py                # AppConfig (apps.strategies)
+│   │   │   ├── models.py              # Strategy model (symbol, timeframe, rules JSON)
+│   │   │   ├── serializers.py         # StrategySerializer
+│   │   │   ├── views.py               # StrategyViewSet (ModelViewSet)
+│   │   │   └── urls.py                # DRF router for /api/strategies/
+│   │   ├── backtesting/               # Historical backtesting engine & results
+│   │   │   ├── apps.py                # AppConfig (apps.backtesting)
+│   │   │   ├── models.py              # Backtest & BacktestTrade models
+│   │   │   ├── serializers.py         # BacktestSerializer, BacktestTradeSerializer
+│   │   │   ├── views.py               # BacktestViewSet (runs backtest synchronously)
+│   │   │   ├── urls.py                # DRF router for /api/backtests/
+│   │   │   ├── tasks.py               # Celery async task skeleton
+│   │   │   └── services/              # Core Backtest Engine Modules
 │   │   │       ├── __init__.py
-│   │   │       ├── engine.py      # BacktestEngine simulation loop
-│   │   │       ├── indicators.py  # RSI & EMA mathematical routines
-│   │   │       └── conditions.py  # Dynamic rule condition evaluator
-│   │   ├── market_data/           # Historical candlestick store
-│   │   │   ├── apps.py            # AppConfig (apps.market_data)
-│   │   │   ├── models.py          # Candle model (OHLCV, timeframe, unique index)
+│   │   │       ├── engine.py          # BacktestEngine simulation loop
+│   │   │       ├── indicators.py      # RSI & EMA mathematical routines
+│   │   │       └── conditions.py      # Dynamic rule condition evaluator
+│   │   ├── market_data/               # Historical candlestick store & provider layer
+│   │   │   ├── apps.py                # AppConfig (apps.market_data)
+│   │   │   ├── models.py              # Candle model (OHLCV, timeframe, unique index)
+│   │   │   ├── serializers.py         # CandleSerializer, HistoricalDataRequestSerializer
+│   │   │   ├── views.py               # HistoricalDataView, SyncCandlesView, CandleListView, MarketDataProvidersView
+│   │   │   ├── urls.py                # /api/market-data/ routes
+│   │   │   ├── providers/             # Pluggable Market Data Providers
+│   │   │   │   ├── base.py            # MarketDataProvider abstract base class
+│   │   │   │   ├── dhan_provider.py   # DB-first DhanHQ v2 integration with gap filling
+│   │   │   │   └── csv_provider.py    # Local disk CSV file reader with recursive search
 │   │   │   └── management/commands/
-│   │   │       └── import_candles.py # CSV candle data importer
-│   │   ├── instruments/           # Symbol & exchange instrument directory (scaffold)
-│   │   │   └── models.py
-│   │   ├── dhan/                  # Dhan broker API client
-│   │   │   └── client.py          # DhanClient (charts, historical data)
-│   │   └── trades/                # Live/Paper trade execution (scaffold)
+│   │   │       └── import_candles.py  # CSV candle data importer command
+│   │   ├── instruments/               # Symbol & exchange instrument directory
+│   │   │   ├── models.py              # Instrument model (security_id, lot_size, tick_size)
+│   │   │   ├── serializers.py         # InstrumentSerializer
+│   │   │   ├── views.py               # InstrumentViewSet
+│   │   │   └── urls.py                # /api/instruments/ routes
+│   │   ├── dhan/                      # Production DhanHQ broker integration
+│   │   │   ├── client.py              # DhanClient (HTTP client with retry & backoff)
+│   │   │   ├── exceptions.py          # Unified Dhan exception hierarchy
+│   │   │   ├── views.py               # Live status, profile, funds, positions, orders, margin views
+│   │   │   ├── urls.py                # /api/dhan/ routes
+│   │   │   └── services/              # High-level Dhan domain services
+│   │   │       ├── historical_data.py # Date chunking, parsing, and bulk upserting candles
+│   │   │       ├── instruments.py     # Dhan scrip master CSV download & seed service
+│   │   │       └── websocket.py       # Binary packet parser for live tick feeds
+│   │   └── trades/                    # Live/Paper trade execution scaffold
 │   │       └── models.py
-│   ├── config/                    # Django project core
-│   │   ├── settings.py            # Settings, CORS, Database, Timezone (Asia/Kolkata)
-│   │   ├── urls.py                # Main URL dispatcher (/api/...)
+│   ├── config/                        # Django project core
+│   │   ├── settings.py                # Settings, CORS, Database, Timezone (Asia/Kolkata)
+│   │   ├── urls.py                    # Main URL dispatcher (/api/...)
 │   │   ├── wsgi.py
 │   │   └── asgi.py
-│   ├── data/sample/
-│   │   └── nifty_5m.csv           # Sample 5-minute NIFTY OHLCV dataset
+│   ├── data/                          # Local historical CSV data repository
+│   │   ├── nifty_5m.csv               # NIFTY 5-minute dataset
+│   │   └── sample/
+│   │       └── nifty_5m.csv           # Sample backup
 │   ├── manage.py
 │   └── requirements.txt
 │
 └── frontend/
-    ├── app/                       # Next.js 15 App Router
-    │   ├── layout.tsx             # Root HTML layout with Inter font
-    │   ├── globals.css            # Tailwind CSS setup & control utilities
-    │   ├── providers.tsx          # React Query QueryClientProvider
-    │   ├── page.tsx               # Redirects to /dashboard
-    │   ├── login/page.tsx         # Sign-in form (JWT auth)
-    │   ├── register/page.tsx      # Registration form
-    │   └── dashboard/             # Authenticated workspace
-    │       ├── page.tsx           # Dashboard home (Stats, Equity chart, Quick actions)
+    ├── app/                           # Next.js 15 App Router
+    │   ├── layout.tsx                 # Root HTML layout with Inter font
+    │   ├── globals.css                # Tailwind CSS setup & control utilities
+    │   ├── providers.tsx              # React Query QueryClientProvider
+    │   ├── page.tsx                   # Redirects to /dashboard
+    │   ├── login/page.tsx             # Sign-in form (JWT auth)
+    │   ├── register/page.tsx          # Registration form
+    │   └── dashboard/                 # Authenticated workspace
+    │       ├── page.tsx               # Live Dashboard (real stats, dynamic equity curve, Dhan status)
     │       ├── strategies/
-    │       │   ├── page.tsx       # Strategy management list
-    │       │   └── new/page.tsx   # Interactive rule & indicator strategy builder
+    │       │   ├── page.tsx           # Strategy management list
+    │       │   └── new/page.tsx       # Interactive rule & indicator strategy builder
     │       ├── backtests/
-    │       │   ├── page.tsx       # Historical backtests list
-    │       │   ├── new/page.tsx   # Backtest submission form
-    │       │   └── [id]/page.tsx  # Backtest report: metrics, equity chart, trades table
-    │       └── instruments/
-    │           └── page.tsx       # Searchable instruments directory
+    │       │   ├── page.tsx           # Historical backtests list
+    │       │   ├── new/page.tsx       # Backtest submission form (dynamic date defaults)
+    │       │   └── [id]/page.tsx      # Backtest report: metrics, equity chart, trades table
+    │       ├── market-data/
+    │       │   └── page.tsx           # Market Data Engine (Visualizer, Dhan Sync, DB Cache, Providers)
+    │       ├── instruments/
+    │       │   └── page.tsx           # Searchable instruments directory with quick preview/sync
+    │       └── broker/
+    │           └── page.tsx           # Broker Hub (Dhan credentials, margin calc, positions, orders)
     ├── components/
     │   ├── layout/
-    │   │   ├── AppShell.tsx       # Dashboard layout shell with responsive drawer
-    │   │   └── Sidebar.tsx        # Navigation sidebar with active state
+    │   │   ├── AppShell.tsx           # Dashboard layout shell with responsive drawer
+    │   │   └── Sidebar.tsx            # Navigation sidebar with active state
     │   └── dashboard/
-    │       ├── StatCard.tsx       # Key performance indicator summary cards
-    │       └── EquityChart.tsx    # Recharts AreaChart for cumulative portfolio value
+    │       ├── StatCard.tsx           # Key performance indicator summary cards
+    │       └── EquityChart.tsx        # Dynamic prop-driven Recharts AreaChart for equity curve
     ├── lib/
-    │   ├── api.ts                 # Axios instance with Bearer token interceptor
-    │   ├── auth.ts                # LocalStorage token getter/setter/logout
-    │   ├── auth-api.ts            # login() and register() API calls
-    │   ├── strategy-api.ts        # Strategy CRUD API client
-    │   └── mock-data.ts           # Mock datasets for offline UI preview
+    │   ├── api.ts                     # Axios instance with Bearer token interceptor
+    │   ├── auth.ts                    # LocalStorage token getter/setter/logout
+    │   ├── auth-api.ts                # login() and register() API calls
+    │   ├── strategy-api.ts            # Strategy CRUD API client
+    │   ├── backtest-api.ts            # Backtest submission & reporting API client
+    │   ├── market-api.ts              # Market Data API client (historical, sync, candles, providers)
+    │   └── dhan-api.ts                # Dhan broker API client (status, profile, funds, positions, orders)
     ├── types/
-    │   ├── strategy.ts            # TypeScript interfaces for Strategy
-    │   ├── backtest.ts            # TypeScript interfaces for Backtest
-    │   └── market.ts              # Candle & Instrument interfaces
+    │   ├── strategy.ts                # TypeScript interfaces for Strategy
+    │   ├── backtest.ts                # TypeScript interfaces for Backtest & Trades
+    │   ├── market.ts                  # Candle, Instrument, MarketDataProvider, Sync payloads
+    │   └── dhan.ts                    # Dhan account, fund limits, orders, positions types
     ├── package.json
     └── tsconfig.json
 ```
@@ -141,35 +169,20 @@ Represents a user-defined algorithmic trading strategy.
 - `id`: Auto-incrementing primary key.
 - `user`: Foreign key to `auth.User` (`CASCADE`).
 - `name`: CharField (max 150).
-- `symbol`: CharField (e.g. `"NIFTY"`, `"BANKNIFTY"`).
+- `symbol`: CharField (e.g. `"NIFTY"`, `"BANKNIFTY"`, `"HDFCBANK"`).
 - `timeframe`: CharField choices: `["1m", "5m", "15m", "1h"]`.
 - `capital`: DecimalField (max_digits=15, decimal_places=2).
-- `configuration`: JSONField storing the strategy logic:
-  ```json
-  {
-    "symbol": "NIFTY",
-    "entry": [
-      {"indicator": "RSI", "period": 14, "operator": "<", "value": 30}
-    ],
-    "exit": [
-      {"indicator": "RSI", "period": 14, "operator": ">", "value": 60}
-    ],
-    "risk": {
-      "stop_loss_percent": 2.0,
-      "target_percent": 4.0
-    }
-  }
-  ```
+- `configuration`: JSONField storing entry rules, exit rules, and risk management parameters.
 - `is_active`: BooleanField (default True).
 - `created_at` / `updated_at`: Timestamps.
 
 ### 4.2. `apps.market_data.Candle`
-Stores historical OHLCV market candles.
-- `security_id`: CharField (e.g., `"NIFTY"`, `"26000"`).
-- `exchange_segment`: CharField (e.g., `"NSE_FNO"`, `"NSE_EQ"`).
-- `symbol`: CharField.
-- `timeframe`: CharField (e.g. `"5m"`).
-- `timestamp`: DateTimeField (IST-aware).
+Stores normalized OHLCV market candles.
+- `security_id`: CharField (e.g., `"1333"`, `"13"`, `"NIFTY"`).
+- `exchange_segment`: CharField (e.g., `"NSE_EQ"`, `"IDX_I"`, `"NSE_FNO"`).
+- `symbol`: CharField (e.g., `"HDFCBANK"`, `"NIFTY"`).
+- `timeframe`: CharField (e.g., `"1m"`, `"5m"`, `"15m"`, `"25m"`, `"1h"`, `"1d"`).
+- `timestamp`: DateTimeField (IST Asia/Kolkata aware).
 - `open`, `high`, `low`, `close`: DecimalField(15, 4).
 - `volume`, `open_interest`: BigIntegerField (nullable).
 - **Constraints & Indexes**:
@@ -205,59 +218,62 @@ Individual executed trade generated by the backtesting engine.
 - `pnl`: DecimalField(15, 2).
 - `exit_reason`: CharField (`"TARGET"`, `"STOP_LOSS"`, `"SIGNAL"`, `"END_OF_BACKTEST"`).
 
----
-
-## 5. Backtesting Engine Workflow & Execution Logic
-
-The backtesting service resides in `backend/apps/backtesting/services/`.
-
-```
-BacktestViewSet.perform_create()
-         │
-         ▼
-Load Market Candles from DB (Candle model)
-for [symbol, timeframe, date range]
-         │
-         ▼
-Construct Pandas DataFrame (timestamp, open, high, low, close, volume)
-         │
-         ▼
-BacktestEngine(candles=df, configuration=strategy.configuration, capital)
-         │
-         ├─► prepare_indicators():
-         │     Calculates RSI (rolling gain/loss) and EMA (exponential weighted mean)
-         │
-         ├─► Iterates row by row through DataFrame:
-         │     1. check_risk(): Check stop loss / profit target against current price
-         │     2. evaluate_conditions(): Check entry conditions if flat -> open BUY position
-         │     3. evaluate_conditions(): Check exit conditions if in position -> close position
-         │     4. Update equity curve & mark-to-market unrealized PnL
-         │
-         ├─► Close any open position at end of backtest ("END_OF_BACKTEST")
-         │
-         ├─► Compute Analytics:
-         │     - Final Capital
-         │     - Total P&L & Return %
-         │     - Win Rate (% of trades where PnL > 0)
-         │     - Max Drawdown (% peak-to-trough drop from equity curve)
-         │
-         ▼
-Save Backtest status = COMPLETED & bulk_create(BacktestTrade)
-```
-
-### Supported Indicators & Operators
-- **Indicators**:
-  - `RSI`: Relative Strength Index using `period` (default 14). Formula: $100 - (100 / (1 + RS))$ where $RS = \text{AvgGain}/\text{AvgLoss}$.
-  - `EMA`: Exponential Moving Average using `close.ewm(span=period, adjust=False).mean()`.
-- **Operators**: `<`, `<=`, `>`, `>=`, `==`, `!=`.
+### 4.5. `apps.instruments.Instrument`
+Maps trading symbols to DhanHQ security IDs, lot sizes, tick sizes, and segments.
+- `security_id`: CharField(50) (e.g. `"1333"`, `"13"`).
+- `exchange_segment`: CharField(30) (e.g. `"NSE_EQ"`, `"IDX_I"`).
+- `trading_symbol`: CharField(100).
+- `symbol`: CharField(100).
+- `instrument_type`: CharField(30) (`"EQUITY"`, `"INDEX"`, `"FUTIDX"`, `"OPTIDX"`).
+- `lot_size`: PositiveIntegerField (e.g. 25 for NIFTY, 15 for BANKNIFTY).
+- `tick_size`: DecimalField(10, 4).
+- `source`: CharField(50) (e.g. `"DHAN"`).
 
 ---
 
-## 6. API Reference
+## 5. Market Data Engine & Provider Architecture
+
+The market data layer is decoupled via the `MarketDataProvider` abstract base class (`apps/market_data/providers/base.py`).
+
+```
+                              ┌────────────────────────┐
+                              │   MarketDataProvider   │
+                              │     (Abstract Base)    │
+                              └───────────┬────────────┘
+                                          │
+                    ┌─────────────────────┴─────────────────────┐
+                    ▼                                           ▼
+       ┌───────────────────────────┐               ┌───────────────────────────┐
+       │       DhanProvider        │               │        CSVProvider        │
+       │  (Live Feed + DB Cache)   │               │   (Local Disk / Offline)  │
+       └─────────────┬─────────────┘               └─────────────┬─────────────┘
+                     │                                           │
+         ┌───────────┴───────────┐                               │
+         ▼                       ▼                               ▼
+┌──────────────────┐   ┌──────────────────┐             ┌──────────────────┐
+│  Postgres Cache  │   │   DhanHQ v2 API  │             │   backend/data/  │
+│  (Candle Table)  │   │ (Charts/Intraday)│             │  (*_timeframe.csv│
+└──────────────────┘   └──────────────────┘             └──────────────────┘
+```
+
+### 5.1. `DhanProvider`
+- **DB-First Caching**: Queries PostgreSQL for the requested window.
+- **Gap Detection**: Identifies missing trading dates and requests only the missing chunks from DhanHQ.
+- **Resilient Querying**: Filters by `Q(security_id=id) | Q(symbol__iexact=symbol)` to handle both numeric security IDs and string symbols.
+- **Error Transparency**: If DhanHQ returns an error (e.g. HTTP 451 subscription required) and no cached data exists, it re-raises the exception so the API and UI communicate the real broker status.
+
+### 5.2. `CSVProvider`
+- **Recursive Directory Discovery**: Uses `os.walk` to search `backend/data/` and subdirectories (`data/sample/`).
+- **Flexible Schema Aliasing**: Automatically normalizes column variations (`timestamp`, `open`, `high`, `low`, `close`, `volume`, `oi`).
+- **Deduplication**: Automatically deduplicates identical CSV filenames found across directories.
+
+---
+
+## 6. Complete API Reference
 
 All endpoints are prefixed with `/api/`.
 
-### 6.1. Authentication
+### 6.1. Authentication (`/api/auth/`)
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `POST` | `/api/auth/register/` | Register new user account (`username`, `email`, `password`, `password_confirm`) | No |
@@ -268,9 +284,9 @@ All endpoints are prefixed with `/api/`.
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `GET` | `/api/strategies/` | List all strategies belonging to authenticated user | Yes |
-| `POST` | `/api/strategies/` | Create a new strategy | Yes |
+| `POST` | `/api/strategies/` | Create a new strategy with indicator and risk JSON | Yes |
 | `GET` | `/api/strategies/{id}/` | Retrieve strategy details | Yes |
-| `PUT` / `PATCH` | `/api/strategies/{id}/` | Update strategy | Yes |
+| `PUT` / `PATCH` | `/api/strategies/{id}/` | Update strategy configuration | Yes |
 | `DELETE` | `/api/strategies/{id}/` | Delete strategy | Yes |
 
 ### 6.3. Backtests (`/api/backtests/`)
@@ -278,11 +294,19 @@ All endpoints are prefixed with `/api/`.
 |---|---|---|---|
 | `GET` | `/api/backtests/` | List user's backtest history | Yes |
 | `POST` | `/api/backtests/` | Submit and execute a new backtest synchronously | Yes |
-| `GET` | `/api/backtests/{id}/` | Get backtest metadata and metrics | Yes |
+| `GET` | `/api/backtests/{id}/` | Get backtest metadata and computed metrics | Yes |
 | `GET` | `/api/backtests/{id}/trades/` | Get list of executed trades for the backtest | Yes |
 | `GET` | `/api/backtests/{id}/equity/` | Get step-by-step equity curve data points | Yes |
 
-### 6.4. Dhan Broker Integration (`/api/dhan/`)
+### 6.4. Market Data Engine (`/api/market-data/`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/market-data/historical/` | Query historical candles (`security_id`, `symbol`, `timeframe`, `start_date`, `end_date`, `provider=dhan\|csv`) | No |
+| `POST` | `/api/market-data/sync/` | Force-fetch candles from DhanHQ and upsert into PostgreSQL | No |
+| `GET` | `/api/market-data/providers/` | Health check & capabilities of all registered providers (`dhan`, `csv`) | No |
+| `GET` | `/api/market-data/candles/` | Direct query of PostgreSQL Candle table with optional symbol, secId, timeframe | No |
+
+### 6.5. Dhan Broker Integration (`/api/dhan/`)
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `GET` | `/api/dhan/status/` | Live connection status, active segments, data plan & funds summary | No |
@@ -292,16 +316,39 @@ All endpoints are prefixed with `/api/`.
 | `GET` | `/api/dhan/orders/` | Orders placed today in the Dhan account | No |
 | `POST` | `/api/dhan/orders/` | Place a new order with DhanHQ engine | No |
 | `POST` | `/api/dhan/margin/` | Calculate live required margin for an order (`/v2/margincalculator`) | No |
-| `POST` | `/api/dhan/historical/` | Fetch historical/intraday charts from Dhan | No |
+| `POST` | `/api/dhan/historical/` | Fetch historical/intraday charts directly from Dhan | No |
 
-### 6.5. Market Instruments (`/api/instruments/`)
+### 6.6. Market Instruments (`/api/instruments/`)
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `GET` | `/api/instruments/` | List instruments mapped with Dhan security IDs & lot sizes (`?q=...`) | No |
 
 ---
 
-## 7. Environment Variables & Setup
+## 7. Frontend Architecture & UI Features
+
+### 7.1. Live Dashboard (`/dashboard`)
+- **Real Metrics**: Dynamically calculated from database backtests and strategies (Total Backtests, Strategies, Total Trades, Portfolio Capital).
+- **Live Dhan Broker Banner**: Shows real-time connection status (`Connected · ID: 1113630741` or instructions to configure).
+- **Dynamic Equity Curve**: `EquityChart` accepts dynamic backtest history, building a chronological equity trajectory rather than static mock coordinates.
+- **Recent Backtest Activity**: Displays actual backtest runs with status badges and calculated P&L.
+
+### 7.2. Market Data Engine (`/dashboard/market-data`)
+- **Feed Provider Selector**: Toggle between `DhanHQ (Live API)` and `Local CSV (Offline)`.
+- **Subscription Shield**: When DhanHQ returns HTTP 451 (Data APIs subscription required on account), the UI displays a clear explanation with 1-click fallback buttons to load local CSV feeds or inspect cached DB candles.
+- **Quick Presets**: 1-click presets for HDFCBANK, RELIANCE, TCS, INFY, NIFTY, and BANKNIFTY with correct segments and default timeframes.
+- **Direct DB Cache Inspector**: Search by symbol/secId, filter by timeframe, or click "View All Candles" to view all records currently in Postgres.
+- **Providers Architecture Tab**: Live telemetry showing rate limits, storage engine paths, supported granularities, and detected CSV file counts.
+
+### 7.3. Broker Hub (`/dashboard/broker`)
+- Real-time connection testing with DhanHQ.
+- Live fund summary (Available Balance, SOD Limit, Collateral, Withdrawable Balance).
+- Dynamic margin calculator (`/v2/margincalculator`).
+- Live positions and order history display.
+
+---
+
+## 8. Environment Configuration
 
 ### Backend Configuration (`backend/.env`)
 ```env
@@ -310,9 +357,11 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 DATABASE_URL=postgresql://username:password@localhost:5432/algotest_db
 
-# Optional Dhan broker credentials
+# DhanHQ v2 Broker Credentials
 DHAN_CLIENT_ID=your_client_id
 DHAN_ACCESS_TOKEN=your_access_token
+DHAN_API_KEY=your_api_key_optional
+DHAN_SECRET=your_secret_optional
 ```
 
 ### Frontend Configuration (`frontend/.env.local`)
@@ -331,38 +380,31 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-#### Importing Market Data
-```bash
-cd backend
-source venv/bin/activate
-python manage.py import_candles data/sample/nifty_5m.csv --symbol NIFTY --security-id NIFTY --timeframe 5m
-```
-
 #### Running the Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Frontend runs at `http://localhost:3000`.
+
+#### Running Tests
+```bash
+cd backend
+source venv/bin/activate
+python manage.py test apps.market_data
+python manage.py test apps.strategies
+python manage.py test apps.backtesting
+```
 
 ---
 
-## 8. Known Issues & Immediate Remediation Items
+## 9. DhanHQ API Gotchas & Operational Notes
 
-| Item | Issue | Location | Resolution |
-|---|---|---|---|
-| **1. Auth AppConfig Crash (Resolved)** | `from .views import RegisterView` was at top level of `apps/users/apps.py`, triggering `AppRegistryNotReady`. | `backend/apps/users/apps.py` | Kept `apps.py` clean with only `AppConfig`. |
-| **2. Auth URL Route Duplication** | Main `config/urls.py` defines `path("api/auth/register/", include("apps.users.urls"))`, and `apps.users.urls` defines `path("register/", ...)`. This creates `/api/auth/register/register/`. | `backend/config/urls.py` and `backend/apps/users/urls.py` | Change `config/urls.py` to `path("api/auth/", include("apps.users.urls"))` so that `/api/auth/register/` matches frontend expectations. |
-| **3. Markdown Fences in Python Command** | `import_candles.py` contains ````python` on line 1 and ```` on line 211. This causes a `SyntaxError` when executing `python manage.py import_candles`. | `backend/apps/market_data/management/commands/import_candles.py` | Strip markdown fences from the Python file. |
-| **4. Redundant Engine Files** | Duplicate files `apps/backtesting/engine.py` and `indicators.py` exist in the app root, while the active versions are in `apps/backtesting/services/`. | `backend/apps/backtesting/` | Consolidate or document that `services/` is the active production engine. |
-| **5. Frontend Real API Integration** | The Strategy Builder (`/dashboard/strategies/new`) and Backtest Screen (`/dashboard/backtests/new`) currently demo with mock transitions. | `frontend/app/dashboard/` | Connect `createStrategy()` and `api.post("/backtests/")` using TanStack Query mutations. |
-
----
-
-## 9. Future Roadmap
-
-1. **Celery / Redis Asynchronous Backtesting**: Offload long backtests (e.g. multi-year tick-level data) to Celery workers using `apps/backtesting/tasks.py` with WebSocket or polling updates.
-2. **Options Strategy Builder**: Add multi-leg options structures (Straddles, Strangles, Iron Condors) with Greeks calculation (Delta, Theta, Gamma, Vega).
-3. **Live Execution / Dhan Webhooks**: Implement Dhan webhook listeners and order placement routines inside `apps/trades/` and `apps/dhan/`.
-4. **Interactive Charting with TradingView**: Integrate Lightweight Charts or TradingView widget to visualize candlesticks with buy/sell markers overlay.
+1. **Trading APIs vs Data APIs (HTTP 451)**:
+   - On DhanHQ, Trading APIs (Profile, Fund Limits, Positions, Orders, Margin Calculator) are enabled by default for all API users.
+   - Candlestick Historical Chart APIs (`/v2/charts/historical` and `/v2/charts/intraday`) require subscribing to the "Data APIs" add-on in the Dhan Web console (`profile.dataPlan = "Active"`).
+   - If `dataPlan` is `"Deactive"`, Dhan returns HTTP 451 (`User has not subscribed to Data APIs`). The system gracefully surfaces this explanation and provides offline CSV/PostgreSQL fallback.
+2. **Rate Limiting (HTTP 429)**:
+   - Dhan enforces a rate limit of ~5 requests/second. `DhanClient` handles this transparently using exponential backoff retries with `Retry-After` header inspection.
+3. **Chunking Limits**:
+   - Intraday 1-minute data requests must not exceed 7 days per call. `DhanHistoricalService` automatically segments date ranges into safe windows.

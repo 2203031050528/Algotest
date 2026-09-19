@@ -91,7 +91,12 @@ class MarketDataProvider(ABC):
         Return a summary dict describing this provider.
         Useful for status endpoints and admin dashboards.
         """
+        name = self.get_provider_name().lower().replace("provider", "")
+        available = self.is_available()
         return {
+            "name": name,
             "provider": self.get_provider_name(),
-            "available": self.is_available(),
+            "available": available,
+            "status": "active" if available else "inactive",
         }
+

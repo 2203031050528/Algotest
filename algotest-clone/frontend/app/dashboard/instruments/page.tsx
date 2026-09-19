@@ -65,6 +65,10 @@ export default function InstrumentsPage() {
     setActivePreview(item);
     setPreviewLoading(true);
     setPreviewError(null);
+    const toDate = new Date().toISOString().split("T")[0];
+    const fromDate = new Date();
+    fromDate.setMonth(fromDate.getMonth() - 3);
+    const fromDateStr = fromDate.toISOString().split("T")[0];
     try {
       const res = await marketApi.getHistorical({
         security_id: item.security_id,
@@ -72,8 +76,8 @@ export default function InstrumentsPage() {
         exchange_segment: item.segment,
         instrument_type: item.type,
         timeframe: "1d",
-        start_date: "2024-01-01",
-        end_date: "2024-03-31",
+        start_date: fromDateStr,
+        end_date: toDate,
       });
       setPreviewCandles(res.results || []);
     } catch (err: unknown) {
@@ -89,14 +93,18 @@ export default function InstrumentsPage() {
   const handleQuickSync = async (item: InstrumentItem) => {
     setSyncingSecId(item.security_id);
     setSyncFeedback(null);
+    const toDate = new Date().toISOString().split("T")[0];
+    const fromDate = new Date();
+    fromDate.setMonth(fromDate.getMonth() - 3);
+    const fromDateStr = fromDate.toISOString().split("T")[0];
     try {
       const res = await marketApi.syncCandles({
         security_id: item.security_id,
         exchange_segment: item.segment,
         symbol: item.symbol,
         timeframe: "1d",
-        start_date: "2024-01-01",
-        end_date: "2024-03-31",
+        start_date: fromDateStr,
+        end_date: toDate,
         instrument_type: item.type,
       });
       setSyncFeedback({

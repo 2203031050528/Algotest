@@ -22,12 +22,14 @@ import { getStrategies } from "@/lib/strategy-api";
 import { dhanApi } from "@/lib/dhan-api";
 import { Backtest } from "@/types/backtest";
 import { Strategy } from "@/types/strategy";
+import { DhanStatusResponse } from "@/types/dhan";
 
 export default function DashboardPage() {
   const [backtests, setBacktests] = useState<Backtest[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [dhanClientId, setDhanClientId] = useState("1113630741");
+  const [dhanStatus, setDhanStatus] = useState<DhanStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [equityCurve, setEquityCurve] = useState<{ label: string; value: number }[]>([]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -36,11 +38,24 @@ export default function DashboardPage() {
       dhanApi.getStatus(),
     ])
       .then(([btRes, stRes, dhRes]) => {
-        if (btRes.status === "fulfilled") setBacktests(btRes.value);
-        if (stRes.status === "fulfilled") setStrategies(stRes.value);
-        if (dhRes.status === "fulfilled" && dhRes.value.client_id) {
-          setDhanClientId(dhRes.value.client_id);
+        if (btRes.status === "fulfilled") {
+          const sorted = btRes.value.slice().sort(
+            (a, b) => new Date(a.created_at || "").getTime() - new Date(b.created_at || "").getTime()
+          );
+          setBacktests(sorted);
+
+          // Build equity curve: running sum of final_capital across completed backtests
+          const completed = sorted.filter((b) => b.status === "COMPLETED" && b.final_capital);
+          if (completed.length > 0) {
+            const curve = completed.map((b) => ({
+              label: (b.start_date || "").slice(5), // MM-DD
+              value: Number(b.final_capital),
+            }));
+            setEquityCurve(curve);
+          }
         }
+        if (stRes.status === "fulfilled") setStrategies(stRes.value);
+        if (dhRes.status === "fulfilled") setDhanStatus(dhRes.value);
       })
       .catch((err) => console.error("Error loading dashboard data:", err))
       .finally(() => setLoading(false));
@@ -52,6 +67,9 @@ export default function DashboardPage() {
   const winCount = backtests.filter((b) => Number(b.total_pnl || 0) > 0).length;
   const winRatePct = totalRuns > 0 ? ((winCount / totalRuns) * 100).toFixed(1) : "0.0";
   const totalCapital = strategies.reduce((acc, s) => acc + Number(s.capital || 0), 0);
+
+  const dhanClientId = dhanStatus?.client_id;
+  const isConnected = dhanStatus?.connected ?? false;
 
   return (
     <AppShell>
@@ -77,7 +95,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Real Dynamic Metrics */}
+        {/* Live Metrics from DB */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Backtests"
@@ -100,13 +118,13 @@ export default function DashboardPage() {
           />
           <StatCard
             title="Portfolio Capital"
-            value={`₹${(totalCapital || 100000).toLocaleString("en-IN")}`}
-            subtitle={`${strategies.length} active models`}
+            value={`₹${(totalCapital || 0).toLocaleString("en-IN")}`}
+            subtitle={`${strategies.length} active model${strategies.length !== 1 ? "s" : ""}`}
             icon={Wallet}
           />
         </div>
 
-        {/* Dhan Broker Integration Quick Status */}
+        {/* Dhan Broker Live Status Banner */}
         <div className="flex flex-col gap-4 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-blue-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3.5">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
@@ -114,14 +132,32 @@ export default function DashboardPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-900">Dhan Broker Connected</span>
-                <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Client ID: {dhanClientId}
+                <span className="font-semibold text-gray-900">Dhan Broker</span>
+                <span
+                  className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isConnected
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                    }`}
+                  />
+                  {isConnected
+                    ? dhanClientId
+                      ? `Connected · ID: ${dhanClientId}`
+                      : "Connected"
+                    : loading
+                    ? "Connecting..."
+                    : "Not Connected"}
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-gray-600">
-                Live trading credentials configured. Historical market data, paper trading, live orders, and margin calculator active.
+                {isConnected
+                  ? "Live trading credentials active. Market data, paper trading, live orders, and margin calculator ready."
+                  : "Configure DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN in backend .env to enable live trading."}
               </p>
             </div>
           </div>
@@ -140,13 +176,13 @@ export default function DashboardPage() {
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <h2 className="font-semibold text-gray-900">Portfolio Simulation</h2>
-                <p className="mt-1 text-sm text-gray-500">Historical performance trajectory</p>
+                <p className="mt-1 text-sm text-gray-500">Backtest final capital trajectory</p>
               </div>
               <span className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600">
-                Live Feeds
+                {completedRuns.length} runs
               </span>
             </div>
-            <EquityChart />
+            <EquityChart data={equityCurve} empty={completedRuns.length === 0} />
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -173,7 +209,7 @@ export default function DashboardPage() {
               <QuickAction
                 href="/dashboard/market-data"
                 icon={<Database size={18} />}
-                title="Market Data &amp; Dhan Sync"
+                title="Market Data & Dhan Sync"
                 text="Query OHLC candles & sync feeds"
               />
               <QuickAction
@@ -208,34 +244,38 @@ export default function DashboardPage() {
           </div>
 
           <div className="divide-y divide-gray-100">
-            {backtests.slice(0, 5).map((item) => {
-              const pnl = Number(item.total_pnl || 0);
-              const isPositive = pnl >= 0;
-              return (
-                <Link
-                  key={item.id}
-                  href={`/dashboard/backtests/${item.id}`}
-                  className="flex flex-col gap-3 px-5 py-4 transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="font-semibold text-gray-900">Backtest #{item.id}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      {item.start_date} &rarr; {item.end_date} · {item.status} · {item.total_trades} trades
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-5">
-                    <span
-                      className={`text-sm font-bold ${
-                        isPositive ? "text-emerald-600" : "text-red-600"
-                      }`}
-                    >
-                      {isPositive ? "+" : ""}₹{pnl.toLocaleString("en-IN")}
-                    </span>
-                    <ChevronRight size={18} className="text-gray-400" />
-                  </div>
-                </Link>
-              );
-            })}
+            {backtests
+              .slice()
+              .reverse()
+              .slice(0, 5)
+              .map((item) => {
+                const pnl = Number(item.total_pnl || 0);
+                const isPositive = pnl >= 0;
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/dashboard/backtests/${item.id}`}
+                    className="flex flex-col gap-3 px-5 py-4 transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="font-semibold text-gray-900">Backtest #{item.id}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {item.start_date} &rarr; {item.end_date} · {item.status} · {item.total_trades} trades
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-5">
+                      <span
+                        className={`text-sm font-bold ${
+                          isPositive ? "text-emerald-600" : "text-red-600"
+                        }`}
+                      >
+                        {isPositive ? "+" : ""}₹{pnl.toLocaleString("en-IN")}
+                      </span>
+                      <ChevronRight size={18} className="text-gray-400" />
+                    </div>
+                  </Link>
+                );
+              })}
 
             {backtests.length === 0 && !loading && (
               <div className="p-8 text-center text-xs text-gray-500">
@@ -243,6 +283,12 @@ export default function DashboardPage() {
                 <Link href="/dashboard/backtests/new" className="text-blue-600 font-semibold underline">
                   Launch your first backtest now.
                 </Link>
+              </div>
+            )}
+
+            {loading && (
+              <div className="p-8 text-center text-xs text-gray-400">
+                Loading backtest history...
               </div>
             )}
           </div>

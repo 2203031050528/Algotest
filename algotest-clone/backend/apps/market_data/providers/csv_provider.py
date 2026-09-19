@@ -141,12 +141,20 @@ class CSVProvider(MarketDataProvider):
 
     def describe(self) -> Dict[str, Any]:
         files = self._list_csv_files()
+        available = self.is_available()
         return {
+            "name": "csv",
             "provider": self.get_provider_name(),
-            "available": self.is_available(),
+            "available": available,
+            "status": "active" if (available and len(files) > 0) else "standby",
+            "source": "Local CSV & Disk Storage",
             "data_dir": self.data_dir,
             "csv_files": files,
             "file_count": len(files),
+            "rate_limit": "Unlimited (Disk I/O)",
+            "supported_segments": ["NSE_EQ", "NSE_FNO", "IDX_I"],
+            "timeframes": ["1m", "5m", "15m", "1d"],
+            "priority": 2,
         }
 
     # ------------------------------------------------------------------
@@ -156,28 +164,40 @@ class CSVProvider(MarketDataProvider):
     def _resolve_file_path(self, symbol: str, timeframe: str) -> Optional[str]:
         """
         Resolve the CSV file path for a given (symbol, timeframe) pair.
-        Tries various common name patterns, case-insensitive.
+        Tries various common name patterns, case-insensitive, including subdirectories.
         """
+        clean_symbol = symbol.replace(" ", "").replace("_", "")
         candidates = [
             f"{symbol}_{timeframe}.csv",
             f"{symbol.upper()}_{timeframe}.csv",
             f"{symbol.lower()}_{timeframe.lower()}.csv",
+            f"{clean_symbol}_{timeframe}.csv",
+            f"{clean_symbol.lower()}_{timeframe.lower()}.csv",
         ]
+
+        if "nifty" in symbol.lower() and "bank" not in symbol.lower() and "fin" not in symbol.lower():
+            candidates.append(f"nifty_{timeframe.lower()}.csv")
 
         if not os.path.isdir(self.data_dir):
             return None
 
-        for fname in os.listdir(self.data_dir):
-            if fname.lower() in [c.lower() for c in candidates]:
-                return os.path.join(self.data_dir, fname)
+        for root, _, files in os.walk(self.data_dir):
+            for fname in files:
+                if fname.lower() in [c.lower() for c in candidates]:
+                    return os.path.join(root, fname)
 
         return None
 
     def _list_csv_files(self) -> List[str]:
-        """Return list of CSV filenames in data_dir."""
+        """Return list of CSV filenames found in data_dir and subdirectories."""
         if not os.path.isdir(self.data_dir):
             return []
-        return [f for f in os.listdir(self.data_dir) if f.endswith(".csv")]
+        found = set()
+        for root, _, files in os.walk(self.data_dir):
+            for f in files:
+                if f.lower().endswith(".csv"):
+                    found.add(f)
+        return sorted(list(found))
 
     def _read_csv(self, path: str) -> List[Dict[str, str]]:
         """

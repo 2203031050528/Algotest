@@ -5,6 +5,11 @@ export interface Candle {
   low: number;
   close: number;
   volume?: number;
+  security_id?: string;
+  symbol?: string;
+  exchange_segment?: string;
+  timeframe?: string;
+  open_interest?: number | null;
 }
 
 export interface Instrument {
@@ -67,9 +72,17 @@ export interface SyncCandlesResponse {
 
 export interface MarketDataProvider {
   name: string;
+  provider?: string;
   description?: string;
-  status: "active" | "inactive" | "rate_limited" | "error";
+  available?: boolean;
+  status: "active" | "inactive" | "rate_limited" | "error" | "standby" | string;
   priority?: number;
-  supported_timeframes?: string[];
+  source?: string;
+  cache?: string;
+  data_dir?: string;
+  csv_files?: string[];
+  file_count?: number;
+  supported_segments?: string[];
+  timeframes?: string[];
   rate_limit?: string;
 }

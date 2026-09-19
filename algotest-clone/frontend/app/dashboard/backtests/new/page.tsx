@@ -43,8 +43,12 @@ function NewBacktestContent() {
 
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
-  const [startDate, setStartDate] = useState("2024-01-01");
-  const [endDate, setEndDate] = useState("2024-03-31");
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [initialCapital, setInitialCapital] = useState(100000);
   const [dataSource, setDataSource] = useState<"stored" | "dhan">("stored");
 

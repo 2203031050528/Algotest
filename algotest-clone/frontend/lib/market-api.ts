@@ -30,13 +30,14 @@ export const marketApi = {
   /**
    * Query cached candles directly from PostgreSQL without external API calls
    */
-  async getCandles(params: {
-    security_id: string;
-    timeframe: string;
+  async getCandles(params?: {
+    security_id?: string;
+    symbol?: string;
+    timeframe?: string;
     start_date?: string;
     end_date?: string;
     limit?: number;
-  }): Promise<{ count: number; limit: number; results: Candle[] }> {
+  }): Promise<{ count: number; total_count?: number; limit: number; results: Candle[] }> {
     const { data } = await api.get("/market-data/candles/", {
       params,
     });
