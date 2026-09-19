@@ -8,7 +8,9 @@ class Strategy(models.Model):
         ("1m", "1 Minute"),
         ("5m", "5 Minutes"),
         ("15m", "15 Minutes"),
+        ("25m", "25 Minutes"),
         ("1h", "1 Hour"),
+        ("1d", "1 Day (EOD)"),
     ]
 
     name = models.CharField(max_length=150)

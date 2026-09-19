@@ -259,7 +259,7 @@ export default function BacktestDetailPage() {
             <span className="text-xs uppercase text-gray-400 font-semibold">Win Rate</span>
             <p className="mt-2 text-2xl font-bold text-gray-900">
               {backtest.win_rate !== null && backtest.win_rate !== undefined
-                ? `${(Number(backtest.win_rate) * 100).toFixed(1)}%`
+                ? `${Number(backtest.win_rate).toFixed(1)}%`
                 : "—"}
             </p>
             <span className="text-xs text-gray-500">Profitable trade frequency</span>
@@ -269,7 +269,7 @@ export default function BacktestDetailPage() {
             <span className="text-xs uppercase text-gray-400 font-semibold">Max Drawdown</span>
             <p className="mt-2 text-2xl font-bold text-red-600">
               {backtest.max_drawdown !== null && backtest.max_drawdown !== undefined
-                ? `${(Number(backtest.max_drawdown) * 100).toFixed(2)}%`
+                ? `${Number(backtest.max_drawdown).toFixed(2)}%`
                 : "0.00%"}
             </p>
             <span className="text-xs text-gray-500">Peak-to-trough risk ratio</span>

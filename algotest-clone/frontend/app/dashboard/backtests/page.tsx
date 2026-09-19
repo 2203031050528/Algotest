@@ -193,7 +193,7 @@ export default function BacktestsPage() {
                       Win Rate:{" "}
                       <span className="font-semibold text-gray-900">
                         {b.win_rate !== null && b.win_rate !== undefined
-                          ? `${(Number(b.win_rate) * 100).toFixed(1)}%`
+                          ? `${Number(b.win_rate).toFixed(1)}%`
                           : "—"}
                       </span>
                     </div>
