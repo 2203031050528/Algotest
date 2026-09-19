@@ -52,9 +52,9 @@ algotest-clone/
 │   ├── apps/
 │   │   ├── users/                     # Authentication & User accounts
 │   │   │   ├── apps.py                # AppConfig (apps.users)
-│   │   │   ├── serializers.py         # RegisterSerializer with password validation
-│   │   │   ├── views.py               # RegisterView (generics.CreateAPIView)
-│   │   │   └── urls.py                # Auth routes (/register/)
+│   │   │   ├── serializers.py         # RegisterSerializer, UserProfileSerializer, CustomTokenObtainPairSerializer
+│   │   │   ├── views.py               # RegisterView (auto-tokens), CustomTokenObtainPairView (username/email), UserProfileView
+│   │   │   └── urls.py                # Auth routes (/login/, /register/, /refresh/, /me/)
 │   │   ├── strategies/                # Strategy definitions
 │   │   │   ├── apps.py                # AppConfig (apps.strategies)
 │   │   │   ├── models.py              # Strategy model (symbol, timeframe, rules JSON)
@@ -119,10 +119,12 @@ algotest-clone/
     │   ├── globals.css                # Tailwind CSS setup & control utilities
     │   ├── providers.tsx              # React Query QueryClientProvider
     │   ├── page.tsx                   # Redirects to /dashboard
-    │   ├── login/page.tsx             # Sign-in form (JWT auth)
-    │   ├── register/page.tsx          # Registration form
+    │   ├── login/page.tsx             # Sign-in form (Username or Email, JWT auth)
+    │   ├── register/page.tsx          # Registration form (with instant auto-login)
     │   └── dashboard/                 # Authenticated workspace
-    │       ├── page.tsx               # Live Dashboard (real stats, dynamic equity curve, Dhan status)
+    │       ├── page.tsx               # Live Dashboard (dynamic greeting, real stats, equity curve, Dhan status)
+    │       ├── profile/
+    │       │   └── page.tsx           # User profile & account management (personal details, Dhan credentials)
     │       ├── strategies/
     │       │   ├── page.tsx           # Strategy management list
     │       │   └── new/page.tsx       # Interactive rule & indicator strategy builder
@@ -138,15 +140,15 @@ algotest-clone/
     │           └── page.tsx           # Broker Hub (Dhan credentials, margin calc, positions, orders)
     ├── components/
     │   ├── layout/
-    │   │   ├── AppShell.tsx           # Dashboard layout shell with responsive drawer
-    │   │   └── Sidebar.tsx            # Navigation sidebar with active state
+    │   │   ├── AppShell.tsx           # Dashboard layout shell with dynamic user avatar initials & header
+    │   │   └── Sidebar.tsx            # Navigation sidebar with dynamic user profile card & logout
     │   └── dashboard/
     │       ├── StatCard.tsx           # Key performance indicator summary cards
     │       └── EquityChart.tsx        # Dynamic prop-driven Recharts AreaChart for equity curve
     ├── lib/
-    │   ├── api.ts                     # Axios instance with Bearer token interceptor
-    │   ├── auth.ts                    # LocalStorage token getter/setter/logout
-    │   ├── auth-api.ts                # login() and register() API calls
+    │   ├── api.ts                     # Axios instance with Bearer token request & 401 refresh/redirect response interceptor
+    │   ├── auth.ts                    # LocalStorage token & user profile getter/setter/logout with event notifications
+    │   ├── auth-api.ts                # login(), register(), getProfile(), and updateProfile() API calls
     │   ├── strategy-api.ts            # Strategy CRUD API client
     │   ├── backtest-api.ts            # Backtest submission & reporting API client
     │   ├── market-api.ts              # Market Data API client (historical, sync, candles, providers)
@@ -276,9 +278,11 @@ All endpoints are prefixed with `/api/`.
 ### 6.1. Authentication (`/api/auth/`)
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
-| `POST` | `/api/auth/register/` | Register new user account (`username`, `email`, `password`, `password_confirm`) | No |
-| `POST` | `/api/auth/login/` | Obtain JWT token pair (`access`, `refresh`) | No |
+| `POST` | `/api/auth/register/` | Register new user account (`username`, `email`, `password`, `password_confirm`). Auto-generates and returns JWT token pair (`access`, `refresh`) + `user` object for instant login | No |
+| `POST` | `/api/auth/login/` | Obtain JWT token pair using either **username OR email** + password. Returns tokens and `user` profile metadata | No |
 | `POST` | `/api/auth/refresh/` | Refresh expired access token using refresh token | No |
+| `GET` | `/api/auth/me/` | Retrieve currently authenticated user profile (`id`, `username`, `email`, `first_name`, `last_name`, `date_joined`) | Yes |
+| `PATCH` | `/api/auth/me/` | Update authenticated user personal details (`first_name`, `last_name`, `email`) | Yes |
 
 ### 6.2. Strategies (`/api/strategies/`)
 | Method | Endpoint | Description | Auth Required |

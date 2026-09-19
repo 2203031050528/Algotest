@@ -32,35 +32,34 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-
       const data = await login({
         username,
         password,
       });
 
-      auth.setTokens(
-        data.access,
-        data.refresh
-      );
+      auth.setTokens(data.access, data.refresh);
+      if (data.user) {
+        auth.setUser(data.user);
+      }
 
-      router.push("/dashboard");
-
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const redirect = params.get("redirect");
+        router.push(redirect && redirect.startsWith("/") ? redirect : "/dashboard");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: unknown) {
-
       const error = err as { message?: string; response?: { data?: { detail?: string } } };
       const message =
         error?.response?.data?.detail ||
         (error?.response
-          ? "Invalid username or password."
+          ? "Invalid username/email or password."
           : `Unable to connect to server (${error?.message || "network error"}). Please ensure backend is reachable and CORS/API URL are configured.`);
 
-
       setError(message);
-
     } finally {
-
       setLoading(false);
-
     }
   }
 
@@ -97,7 +96,7 @@ export default function LoginPage() {
             <div>
 
               <label className="mb-2 block text-sm text-slate-300">
-                Username
+                Username or Email
               </label>
 
               <input
@@ -108,7 +107,7 @@ export default function LoginPage() {
                 }
                 required
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-500"
-                placeholder="Enter username"
+                placeholder="Enter username or email"
               />
 
             </div>

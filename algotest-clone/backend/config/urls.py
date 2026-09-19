@@ -14,24 +14,12 @@ urlpatterns = [
         admin.site.urls,
     ),
 
-    # Authentication
+    # Authentication (register, login, refresh, me)
     path(
         "api/auth/",
         include(
             "apps.users.urls"
         ),
-    ),
-
-    path(
-        "api/auth/login/",
-        TokenObtainPairView.as_view(),
-        name="login",
-    ),
-
-    path(
-        "api/auth/refresh/",
-        TokenRefreshView.as_view(),
-        name="token_refresh",
     ),
 
     # Strategies

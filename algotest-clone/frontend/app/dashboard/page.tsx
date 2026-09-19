@@ -23,8 +23,11 @@ import { dhanApi } from "@/lib/dhan-api";
 import { Backtest } from "@/types/backtest";
 import { Strategy } from "@/types/strategy";
 import { DhanStatusResponse } from "@/types/dhan";
+import { auth } from "@/lib/auth";
+import { UserProfile } from "@/lib/auth-api";
 
 export default function DashboardPage() {
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [backtests, setBacktests] = useState<Backtest[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [dhanStatus, setDhanStatus] = useState<DhanStatusResponse | null>(null);
@@ -32,6 +35,10 @@ export default function DashboardPage() {
   const [equityCurve, setEquityCurve] = useState<{ label: string; value: number }[]>([]);
 
   useEffect(() => {
+    setUser(auth.getUser());
+    const handler = () => setUser(auth.getUser());
+    window.addEventListener("auth_user_changed", handler);
+
     Promise.allSettled([
       backtestApi.getBacktests(),
       getStrategies(),
@@ -59,6 +66,8 @@ export default function DashboardPage() {
       })
       .catch((err) => console.error("Error loading dashboard data:", err))
       .finally(() => setLoading(false));
+
+    return () => window.removeEventListener("auth_user_changed", handler);
   }, []);
 
   const totalRuns = backtests.length;
@@ -71,12 +80,18 @@ export default function DashboardPage() {
   const dhanClientId = dhanStatus?.client_id;
   const isConnected = dhanStatus?.connected ?? false;
 
+  const greetingName = user?.first_name
+    ? `${user.first_name} ${user.last_name || ""}`.trim()
+    : user?.username || "Trader";
+
   return (
     <AppShell>
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm text-gray-500">Welcome to AlgoTest</p>
+            <p className="text-sm text-gray-500">
+              Welcome back, <span className="font-semibold text-gray-800">{greetingName}</span>
+            </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900">Trading Console</h1>
           </div>
           <div className="flex items-center gap-2">

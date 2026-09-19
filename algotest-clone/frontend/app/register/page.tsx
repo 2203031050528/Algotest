@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { register } from "@/lib/auth-api";
+import { auth } from "@/lib/auth";
 
 export default function RegisterPage() {
 
@@ -48,7 +49,7 @@ export default function RegisterPage() {
 
     try {
 
-      await register({
+      const data = await register({
         username,
         email,
         password,
@@ -56,7 +57,15 @@ export default function RegisterPage() {
           passwordConfirm,
       });
 
-      router.push("/login");
+      if (data.access) {
+        auth.setTokens(data.access, data.refresh);
+        if (data.user) {
+          auth.setUser(data.user);
+        }
+        router.push("/dashboard");
+      } else {
+        router.push("/login");
+      }
 
     } catch (err: unknown) {
 
